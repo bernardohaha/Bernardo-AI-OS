@@ -1,0 +1,77 @@
+{
+  "symbol": "SUI",
+  "final_recommendation": "HOLD",
+  "avg_confidence": 0.45,
+  "consensus": "MAIORIA",
+  "agents": {
+    "micro": {
+      "symbol": "SUI",
+      "interval": "1m",
+      "price": 3.0098,
+      "recommendation": "HOLD",
+      "orderbook_pressure": "N/A",
+      "strength": "NEUTRAL",
+      "confidence": 0.0,
+      "expected_profit_pct": null,
+      "buy_zone": {
+        "min": null,
+        "max": null
+      },
+      "sell_zone": {
+        "min": null,
+        "max": null
+      },
+      "agent": "micro"
+    },
+    "meso": {
+      "symbol": "SUI",
+      "interval": "1h",
+      "price": 3.0098,
+      "RSI": 31.45,
+      "EMA9": 3.0336,
+      "EMA21": 3.1101,
+      "recommendation": "HOLD",
+      "orderbook_pressure": "N/A",
+      "strength": "NEUTRAL",
+      "confidence": 0.76,
+      "expected_profit_pct": 10.36,
+      "buy_zone": {
+        "min": 3.0545,
+        "max": 3.1162
+      },
+      "sell_zone": {
+        "min": 3.371,
+        "max": 3.4391
+      },
+      "agent": "meso"
+    },
+    "macro": {
+      "symbol": "SUI",
+      "interval": "1d",
+      "price": 3.0098,
+      "RSI": 39.13,
+      "EMA9": 3.2529,
+      "EMA21": 3.343,
+      "recommendation": "SELL",
+      "orderbook_pressure": "N/A",
+      "strength": "STRONG SELL",
+      "confidence": 0.75,
+      "expected_profit_pct": 27.08,
+      "buy_zone": {
+        "min": 2.3684,
+        "max": 2.4162
+      },
+      "sell_zone": {
+        "min": 2.9912,
+        "max": 3.0517
+      },
+      "agent": "macro"
+    }
+  },
+  "orderbook": {
+    "error": "400 Client Error: Bad Request for url: https://api.binance.com/api/v3/depth?symbol=SUI&limit=20"
+  },
+  "portfolio": {
+    "error": "Sem hist\u00f3rico de trades"
+  }
+}

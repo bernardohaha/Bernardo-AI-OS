@@ -1,0 +1,66 @@
+{
+  "pair": "BTCUSDC",
+  "timestamp": "2025-06-13_13-56-13",
+  "trades": [
+    {
+      "symbol": "BTCUSDC",
+      "id": 176020992,
+      "orderId": 5181572759,
+      "orderListId": -1,
+      "price": "103630.01000000",
+      "qty": "0.00095000",
+      "quoteQty": "98.44850950",
+      "commission": "0.00000090",
+      "commissionAsset": "BTC",
+      "time": 1747250527838,
+      "isBuyer": true,
+      "isMaker": false,
+      "isBestMatch": true
+    },
+    {
+      "symbol": "BTCUSDC",
+      "id": 187590750,
+      "orderId": 5375446342,
+      "orderListId": -1,
+      "price": "107736.01000000",
+      "qty": "0.00232000",
+      "quoteQty": "249.94754320",
+      "commission": "0.00000232",
+      "commissionAsset": "BTC",
+      "time": 1748492223623,
+      "isBuyer": true,
+      "isMaker": true,
+      "isBestMatch": true
+    },
+    {
+      "symbol": "BTCUSDC",
+      "id": 188326643,
+      "orderId": 5375452134,
+      "orderListId": -1,
+      "price": "106000.00000000",
+      "qty": "0.00047000",
+      "quoteQty": "49.82000000",
+      "commission": "0.00000047",
+      "commissionAsset": "BTC",
+      "time": 1748545112055,
+      "isBuyer": true,
+      "isMaker": true,
+      "isBestMatch": true
+    },
+    {
+      "symbol": "BTCUSDC",
+      "id": 190258201,
+      "orderId": 5410227178,
+      "orderListId": -1,
+      "price": "104538.92000000",
+      "qty": "0.00334000",
+      "quoteQty": "349.15999280",
+      "commission": "0.00000317",
+      "commissionAsset": "BTC",
+      "time": 1748716985336,
+      "isBuyer": true,
+      "isMaker": false,
+      "isBestMatch": true
+    }
+  ]
+}

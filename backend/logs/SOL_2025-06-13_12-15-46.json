@@ -1,0 +1,93 @@
+{
+  "symbol": "SOL",
+  "final_recommendation": "BUY",
+  "avg_confidence": 0.75,
+  "consensus": "UN\u00c2NIME",
+  "agents": {
+    "micro": {
+      "symbol": "SOL",
+      "interval": "1h",
+      "price": 145.08,
+      "RSI": 30.35,
+      "EMA9": 145.4495,
+      "EMA21": 148.6002,
+      "recommendation": "BUY",
+      "orderbook_pressure": "N/A",
+      "strength": "STRONG BUY",
+      "confidence": 0.75,
+      "expected_profit_pct": 12.4,
+      "buy_zone": {
+        "min": 142.8425,
+        "max": 147.1931
+      },
+      "sell_zone": {
+        "min": 159.8422,
+        "max": 163.0713
+      },
+      "agent": "micro",
+      "pattern_implication": "NEUTRAL",
+      "pattern_strength": "WEAK",
+      "detected_patterns": []
+    },
+    "meso": {
+      "symbol": "SOL",
+      "interval": "1h",
+      "price": 145.04,
+      "RSI": 30.35,
+      "EMA9": 145.4495,
+      "EMA21": 148.6002,
+      "recommendation": "BUY",
+      "orderbook_pressure": "N/A",
+      "strength": "STRONG BUY",
+      "confidence": 0.75,
+      "expected_profit_pct": 12.43,
+      "buy_zone": {
+        "min": 142.8425,
+        "max": 147.1931
+      },
+      "sell_zone": {
+        "min": 159.8422,
+        "max": 163.0713
+      },
+      "agent": "meso",
+      "pattern_implication": "NEUTRAL",
+      "pattern_strength": "WEAK",
+      "detected_patterns": []
+    },
+    "macro": {
+      "symbol": "SOL",
+      "interval": "1h",
+      "price": 145.04,
+      "RSI": 30.14,
+      "EMA9": 145.4415,
+      "EMA21": 148.5965,
+      "recommendation": "BUY",
+      "orderbook_pressure": "N/A",
+      "strength": "STRONG BUY",
+      "confidence": 0.75,
+      "expected_profit_pct": 12.43,
+      "buy_zone": {
+        "min": 142.8425,
+        "max": 147.1931
+      },
+      "sell_zone": {
+        "min": 159.8422,
+        "max": 163.0713
+      },
+      "agent": "macro",
+      "pattern_implication": "NEUTRAL",
+      "pattern_strength": "WEAK",
+      "detected_patterns": []
+    }
+  },
+  "orderbook": {
+    "symbol": "SOL",
+    "buy_pressure": 1758752.99,
+    "sell_pressure": 1251340.04,
+    "pressure_ratio": 1.41,
+    "signal": "Alta press\u00e3o de compra"
+  },
+  "portfolio": {
+    "error": "Sem hist\u00f3rico de trades"
+  }
+}
