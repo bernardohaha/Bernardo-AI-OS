@@ -66,7 +66,7 @@ def run_ai_advisor():
 
 # ---------- Iniciar o Scheduler ----------
 scheduler = BackgroundScheduler()
-scheduler.add_job(run_ai_advisor, "interval", minutes=15)
+scheduler.add_job(run_ai_advisor, "interval", hours=1)
 scheduler.start()
 atexit.register(lambda: scheduler.shutdown())
 

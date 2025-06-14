@@ -1,0 +1,93 @@
+{
+  "symbol": "SUI",
+  "final_recommendation": "HOLD",
+  "avg_confidence": 0.67,
+  "consensus": "UN\u00c2NIME",
+  "agents": {
+    "micro": {
+      "symbol": "SUI",
+      "interval": "1h",
+      "price": 2.8607,
+      "RSI": 25.16,
+      "EMA9": 2.9422,
+      "EMA21": 2.9894,
+      "recommendation": "HOLD",
+      "orderbook_pressure": "BUY_PRESSURE",
+      "strength": "NEUTRAL",
+      "confidence": 0.67,
+      "expected_profit_pct": 12.48,
+      "buy_zone": {
+        "min": 2.9525,
+        "max": 3.0121
+      },
+      "sell_zone": {
+        "min": 3.321,
+        "max": 3.388
+      },
+      "agent": "micro",
+      "pattern_implication": "NEUTRAL",
+      "pattern_strength": "WEAK",
+      "detected_patterns": []
+    },
+    "meso": {
+      "symbol": "SUI",
+      "interval": "1h",
+      "price": 2.8607,
+      "RSI": 25.16,
+      "EMA9": 2.9422,
+      "EMA21": 2.9894,
+      "recommendation": "HOLD",
+      "orderbook_pressure": "BUY_PRESSURE",
+      "strength": "NEUTRAL",
+      "confidence": 0.67,
+      "expected_profit_pct": 12.48,
+      "buy_zone": {
+        "min": 2.9525,
+        "max": 3.0121
+      },
+      "sell_zone": {
+        "min": 3.321,
+        "max": 3.388
+      },
+      "agent": "meso",
+      "pattern_implication": "NEUTRAL",
+      "pattern_strength": "WEAK",
+      "detected_patterns": []
+    },
+    "macro": {
+      "symbol": "SUI",
+      "interval": "1h",
+      "price": 2.8607,
+      "RSI": 25.16,
+      "EMA9": 2.9422,
+      "EMA21": 2.9894,
+      "recommendation": "HOLD",
+      "orderbook_pressure": "BUY_PRESSURE",
+      "strength": "NEUTRAL",
+      "confidence": 0.67,
+      "expected_profit_pct": 12.48,
+      "buy_zone": {
+        "min": 2.9525,
+        "max": 3.0121
+      },
+      "sell_zone": {
+        "min": 3.321,
+        "max": 3.388
+      },
+      "agent": "macro",
+      "pattern_implication": "NEUTRAL",
+      "pattern_strength": "WEAK",
+      "detected_patterns": []
+    }
+  },
+  "orderbook": {
+    "symbol": "SUI",
+    "buy_pressure": 160899.81,
+    "sell_pressure": 70822.01,
+    "pressure_ratio": 2.27,
+    "signal": "Alta press\u00e3o de compra"
+  },
+  "portfolio": {
+    "error": "Sem hist\u00f3rico de trades"
+  }
+}

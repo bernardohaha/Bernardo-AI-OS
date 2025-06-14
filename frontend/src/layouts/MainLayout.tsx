@@ -15,6 +15,7 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           <Link to="/orders" className="block hover:text-yellow-400">Ordens</Link>
           <Link to="/historico" className="block hover:text-yellow-400">Histórico</Link>
           <Link to="/positions" className="block hover:text-yellow-400">Minhas Posições</Link>
+          <Link to="/moeda/SUI" className="block hover:text-yellow-400">Visão por Moeda</Link>
         </nav>
       </aside>
 

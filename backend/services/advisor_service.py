@@ -5,8 +5,12 @@ from services.binance_service import get_candles, get_portfolio, get_current_pri
 from services.market_analysis_service import analyze_orderbook_pressure
 from services import order_service
 from services import notifier_service
+from backend.services.portfolio_service import (
+    build_all_positions as get_portfolio_positions,
+)
 
-# Logs ainda em memória (mantemos esta parte para já)
+
+# Logs ainda em memória
 advisor_logs = []
 
 
@@ -18,7 +22,7 @@ def analyze_symbol(symbol: str):
     rsi = talib.RSI(closes, timeperiod=14)[-1]
     ema_fast = talib.EMA(closes, timeperiod=9)[-1]
     ema_slow = talib.EMA(closes, timeperiod=21)[-1]
-    volume = np.random.randint(50000, 150000)  # Mock de volume, depois ligamos à API
+    volume = np.random.randint(50000, 150000)  # Mock de volume
 
     recommendation = "HOLD"
     strength = "NEUTRAL"
@@ -28,17 +32,15 @@ def analyze_symbol(symbol: str):
     elif rsi > 70 and ema_fast < ema_slow:
         recommendation = "SELL"
 
-    # ➕ Análise de pressão do order book
+    # Análise de pressão do order book
     orderbook = analyze_orderbook_pressure(symbol)
     pressure = orderbook["pressure"] if orderbook and "pressure" in orderbook else "N/A"
 
-    # Ajuste da força com base na coerência técnica + pressão
     if recommendation == "BUY":
         if pressure == "SELL_PRESSURE":
             recommendation = "HOLD (buy bloqueado por pressão de venda)"
         elif pressure == "BUY_PRESSURE":
             strength = "STRONG BUY"
-
     elif recommendation == "SELL":
         if pressure == "BUY_PRESSURE":
             recommendation = "HOLD (sell bloqueado por pressão de compra)"
@@ -73,9 +75,8 @@ def get_advisor_logs():
     return advisor_logs
 
 
-# ESTA É A NOVA FUNÇÃO PRINCIPAL:
 def get_portfolio_analysis(portfolio_data):
-    positions = load_positions()
+    positions = get_portfolio_positions()
     enriched_data = []
 
     for item in portfolio_data:
@@ -85,13 +86,12 @@ def get_portfolio_analysis(portfolio_data):
             entry_price = positions[symbol]["entry_price"]
             quantity = positions[symbol]["quantity"]
 
-            # Preço real via Binance:
             price = get_current_price(symbol)
-
             if price is None:
-                continue  # se não houver preço, ignora
+                continue
 
-            profit_usd, profit_percent = calculate_pnl(price, entry_price, quantity)
+            profit_usd = (price - entry_price) * quantity
+            profit_percent = ((price - entry_price) / entry_price) * 100
             suggestion = suggest_action(
                 profit_percent, symbol=symbol, entry_price=entry_price
             )
@@ -125,7 +125,7 @@ def suggest_action(profit_percent, symbol=None, entry_price=None):
 
 
 def auto_generate_orders(portfolio_data):
-    positions = load_positions()
+    positions = get_portfolio_positions()
     existing_orders = order_service.get_orders()
     symbols_with_orders = [order["symbol"] for order in existing_orders]
 
@@ -137,14 +137,13 @@ def auto_generate_orders(portfolio_data):
             entry_price = positions[symbol]["entry_price"]
             quantity = positions[symbol]["quantity"]
             price = get_current_price(symbol)
-
             if price is None:
                 continue
 
-            profit_usd, profit_percent = calculate_pnl(price, entry_price, quantity)
+            profit_usd = (price - entry_price) * quantity
+            profit_percent = ((price - entry_price) / entry_price) * 100
             suggestion = suggest_action(profit_percent)
 
-            # Só cria ordem se ainda não existir ordem para este símbolo
             if symbol + "USDT" not in symbols_with_orders:
                 if suggestion == "Sugerir Venda":
                     order = {
@@ -156,7 +155,6 @@ def auto_generate_orders(portfolio_data):
                         "status": "OPEN",
                     }
                     order_service.add_order(order)
-
                 elif suggestion == "Sugerir Comprar Mais":
                     order = {
                         "symbol": f"{symbol}USDT",

@@ -1,8 +1,12 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { createChart } from "lightweight-charts";
+
+const intervals = ["1m", "5m", "15m", "1h", "4h", "1d"];
 
 const CandleChart = ({ symbol }: { symbol: string }) => {
   const chartRef = useRef<HTMLDivElement>(null);
+  const candleSeriesRef = useRef<any>(null);
+  const [interval, setInterval] = useState("1m");
 
   useEffect(() => {
     if (!chartRef.current) return;
@@ -17,12 +21,45 @@ const CandleChart = ({ symbol }: { symbol: string }) => {
     });
 
     const candleSeries = chart.addCandlestickSeries();
+    candleSeriesRef.current = candleSeries;
 
-    candleSeries.setData([
-      { time: "2024-06-12", open: 3.1, high: 3.3, low: 3.0, close: 3.2 },
-      { time: "2024-06-13", open: 3.2, high: 3.4, low: 3.1, close: 3.3 },
-      { time: "2024-06-14", open: 3.3, high: 3.5, low: 3.2, close: 3.4 },
-    ]);
+    function toCandle(candle: any) {
+      return {
+        time: Math.floor(candle.t / 1000),
+        open: parseFloat(candle.o),
+        high: parseFloat(candle.h),
+        low: parseFloat(candle.l),
+        close: parseFloat(candle.c),
+      };
+    }
+
+    let ws: WebSocket;
+
+    const fetchAndSubscribe = async () => {
+      // REST (inicial)
+      const res = await fetch(`https://api.binance.com/api/v3/klines?symbol=${symbol}USDT&interval=${interval}&limit=100`);
+      const data = await res.json();
+      const candles = data.map((k: any) => ({
+        time: k[0] / 1000,
+        open: parseFloat(k[1]),
+        high: parseFloat(k[2]),
+        low: parseFloat(k[3]),
+        close: parseFloat(k[4]),
+      }));
+      candleSeries.setData(candles);
+
+      // WebSocket (ao vivo)
+      ws = new WebSocket(`wss://stream.binance.com:9443/ws/${symbol.toLowerCase()}usdt@kline_${interval}`);
+      ws.onmessage = (event) => {
+        const msg = JSON.parse(event.data);
+        if (msg.k && msg.k.x) {
+          const newCandle = toCandle(msg.k);
+          candleSeries.update(newCandle);
+        }
+      };
+    };
+
+    fetchAndSubscribe();
 
     const resize = () => {
       chart.applyOptions({ width: chartRef.current!.clientWidth });
@@ -31,13 +68,25 @@ const CandleChart = ({ symbol }: { symbol: string }) => {
     window.addEventListener("resize", resize);
     return () => {
       chart.remove();
+      ws?.close();
       window.removeEventListener("resize", resize);
     };
-  }, [symbol]);
+  }, [symbol, interval]);
 
   return (
     <div className="bg-white p-4 rounded-xl shadow h-full">
-      <h2 className="text-lg font-semibold mb-2">📊 Gráfico de Velas ({symbol})</h2>
+      <div className="flex justify-between mb-2">
+        <h2 className="text-lg font-semibold">📊 Gráfico de Velas ({symbol})</h2>
+        <select
+          value={interval}
+          onChange={(e) => setInterval(e.target.value)}
+          className="border px-2 py-1 rounded"
+        >
+          {intervals.map((intv) => (
+            <option key={intv} value={intv}>{intv}</option>
+          ))}
+        </select>
+      </div>
       <div ref={chartRef} className="w-full" />
     </div>
   );
