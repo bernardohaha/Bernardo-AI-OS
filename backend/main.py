@@ -35,6 +35,9 @@ import pandas as pd
 import talib
 import atexit
 from dotenv import load_dotenv
+from backend.services.ohlcv_stream_service import start_streaming_ohlcv
+
+start_streaming_ohlcv()
 
 from fastapi.middleware.cors import CORSMiddleware
 

@@ -1,66 +1,47 @@
-import talib
+from typing import Literal
 import numpy as np
-from backend.services.binance_service import get_candles
-from backend.config import settings
-from backend.services.binance_service import get_order_book
+import talib
+
+from backend.config.swing_config import SWING_CONFIG
 
 
-def analyze_symbol(symbol: str):
-    closes = get_candles(symbol)
-    prices = np.array(closes)
+def get_indicators(closes: list[float]) -> tuple[float, float, float]:
+    closes = np.array(closes, dtype=float)
 
-    rsi = talib.RSI(prices, timeperiod=settings.RSI_PERIOD)[-1]
-    ema_fast = talib.EMA(prices, timeperiod=settings.EMA_FAST_PERIOD)[-1]
-    ema_slow = talib.EMA(prices, timeperiod=settings.EMA_SLOW_PERIOD)[-1]
-    recent_high = np.max(prices[-settings.RSI_PERIOD :])
-    recent_low = np.min(prices[-settings.RSI_PERIOD :])
-    volume = sum(closes[-settings.RSI_PERIOD :])
+    rsi_period = SWING_CONFIG["rsi_period"]
+    ema_fast_period = SWING_CONFIG["ema_fast_period"]
+    ema_slow_period = SWING_CONFIG["ema_slow_period"]
 
-    recommendation = "HOLD"
-    if rsi < 30 and ema_fast > ema_slow:
-        recommendation = "BUY"
-    elif rsi > 70 and ema_fast < ema_slow:
-        recommendation = "SELL"
+    rsi = talib.RSI(closes, timeperiod=rsi_period)[-1]
+    ema_fast = talib.EMA(closes, timeperiod=ema_fast_period)[-1]
+    ema_slow = talib.EMA(closes, timeperiod=ema_slow_period)[-1]
 
-    breakout_alert = None
-    if prices[-1] >= recent_high * (1 + settings.BREAKOUT_THRESHOLD):
-        breakout_alert = "BREAKOUT_UP"
-    elif prices[-1] <= recent_low * (1 - settings.BREAKOUT_THRESHOLD):
-        breakout_alert = "BREAKOUT_DOWN"
-
-    return {
-        "symbol": symbol,
-        "RSI": round(rsi, 2),
-        "EMA_FAST": round(ema_fast, 4),
-        "EMA_SLOW": round(ema_slow, 4),
-        "recent_high": round(recent_high, 4),
-        "recent_low": round(recent_low, 4),
-        "volume": round(volume, 2),
-        "recommendation": recommendation,
-        "breakout_alert": breakout_alert,
-    }
+    return rsi, ema_fast, ema_slow
 
 
-def analyze_orderbook_pressure(symbol: str, limit: int = 10):
-    book = get_order_book(symbol, limit)
-    if not book:
-        return {"error": "Order book vazio ou falha na API"}
+def calculate_atr(highs: list[float], lows: list[float], closes: list[float]) -> float:
+    highs = np.array(highs, dtype=float)
+    lows = np.array(lows, dtype=float)
+    closes = np.array(closes, dtype=float)
 
-    total_bid_volume = sum([qty for _, qty in book["bids"]])
-    total_ask_volume = sum([qty for _, qty in book["asks"]])
-    spread = round(book["asks"][0][0] - book["bids"][0][0], 6)
+    atr_period = SWING_CONFIG["atr_period"]
+    atr = talib.ATR(highs, lows, closes, timeperiod=atr_period)[-1]
+    return atr
 
-    if total_bid_volume > total_ask_volume * 1.2:
-        pressure = "BUY_PRESSURE"
-    elif total_ask_volume > total_bid_volume * 1.2:
-        pressure = "SELL_PRESSURE"
-    else:
-        pressure = "BALANCED"
 
-    return {
-        "symbol": symbol,
-        "total_bid_volume": round(total_bid_volume, 2),
-        "total_ask_volume": round(total_ask_volume, 2),
-        "spread": spread,
-        "pressure": pressure,
-    }
+def get_macd_cross(closes: list[float]) -> Literal["bullish", "bearish", "neutral"]:
+    closes = np.array(closes, dtype=float)
+
+    fast = SWING_CONFIG["macd_fast_period"]
+    slow = SWING_CONFIG["macd_slow_period"]
+    signal = SWING_CONFIG["macd_signal_period"]
+    threshold = SWING_CONFIG["macd_threshold"]
+
+    macd, signal_line, hist = talib.MACD(
+        closes, fastperiod=fast, slowperiod=slow, signalperiod=signal
+    )
+
+    diff = macd[-1] - signal_line[-1]
+    if abs(diff) < threshold:
+        return "neutral"
+    return "bullish" if diff > 0 else "bearish"
