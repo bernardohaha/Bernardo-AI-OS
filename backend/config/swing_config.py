@@ -31,13 +31,21 @@ SWING_CONFIG = {
         "support": 0.1,
         "resistance": 0.1,
         "orderbook": 0.1,
-        "volume_confirmation": 0.1,  # Antigo peso de volume (pode ser ajustado ou removido se is_volume_spike o substituir)
+        "volume_confirmation": 0.1,
         "pressure_neutral_penalty": 0.05,
         "fibonacci": 0.1,
-        "volume_spike_confirmation": 0.1,  # NOVO: peso para um spike de volume
-        "rsi_divergence_bullish": 0.25,  # NOVO: peso para divergência bullish (sinal forte)
-        "rsi_divergence_bearish": 0.25,  # NOVO: peso para divergência bearish (sinal forte)
-        "zone_broken_penalty": 0.15,  # NOVO PESO: Penalidade se uma zona relevante foi quebrada
+        "volume_spike_confirmation": 0.1,
+        "rsi_divergence_bullish": 0.25,
+        "rsi_divergence_bearish": 0.25,
+        "zone_broken_penalty": 0.15,
+        # --- NOVOS PESOS PARA BANDAS DE BOLLINGER (Swing) ---
+        "bb_above_upper": 0.1,  # Peso para preço acima da banda superior (viés de alta)
+        "bb_below_lower": 0.1,  # Peso para preço abaixo da banda inferior (viés de baixa)
+        "bb_between_middle_upper": 0.05,  # Peso para preço entre média e banda superior
+        "bb_between_middle_lower": 0.05,  # Peso para preço entre média e banda inferior
+        "bb_above_upper_reversal_potential": 0.05,  # Peso adicional se há potencial de reversão de compra
+        "bb_below_lower_reversal_potential": 0.05,  # Peso adicional se há potencial de reversão de venda
+        "bb_low_volatility_penalty": 0.1,  # Penalidade em caso de baixa volatilidade (bandas estreitas)
     },
     # === Entrada (ATR) ===
     "entry_distance_ema": 0.02,  # Distância percentual do preço à EMA para considerar entrada
@@ -59,4 +67,8 @@ SWING_CONFIG = {
     # === Memória e Execução ===
     "memory_purge_interval": 50,  # A cada quantas execuções limpar a memória antiga
     "trade_memory_retention_days": 7,  # Quantos dias para manter trades na memória
+    # --- NOVO LIMIAR PARA BANDAS DE BOLLINGER (Swing) ---
+    # Limiar para a largura da banda de Bollinger para considerar baixa volatilidade/compressão
+    # Este valor é muito dependente do ativo e do intervalo. É um exemplo e precisa ser otimizado.
+    "bb_low_volatility_threshold": 0.005,  # Exemplo: 0.5% da largura da banda para indicar baixa volatilidade
 }

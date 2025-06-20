@@ -1,8 +1,12 @@
 import numpy as np
 import talib
 from datetime import datetime
-from services.binance_service import get_candles, get_portfolio, get_current_price
-from services.market_analysis_service import analyze_orderbook_pressure
+from backend.services.binance_service import (
+    get_candles,
+    get_portfolio,
+    get_current_price,
+)
+from backend.services.market_analysis_service import analyze_orderbook_pressure
 from services import order_service
 from services import notifier_service
 from backend.services.portfolio_service import (

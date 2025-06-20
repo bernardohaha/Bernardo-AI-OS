@@ -1,6 +1,6 @@
 import numpy as np
 import talib
-from services.binance_service import get_candles
+from backend.services.binance_service import get_candles
 
 
 def analyze_swing(symbol):

@@ -1,6 +1,6 @@
 import json
 from datetime import datetime, timedelta
-from services.binance_service import get_current_price
+from backend.services.binance_service import get_current_price
 from services import notifier_service
 
 # Constantes do logger e anti-spam

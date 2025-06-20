@@ -1,7 +1,7 @@
 import numpy as np
 import talib
-from services.binance_service import get_portfolio, get_candles
-from services.logger_service import log_suggestion
+from backend.services.binance_service import get_portfolio, get_candles
+from backend.services.logger_service import log_suggestion
 from services import notifier_service  # <- Importa o notifier
 
 

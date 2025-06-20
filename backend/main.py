@@ -7,26 +7,26 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from fastapi import FastAPI
 from fastapi import APIRouter
 from pydantic import BaseModel
-from services.binance_service import (
+from backend.services.binance_service import (
     get_portfolio,
     get_candles,
     get_portfolio_with_value,
 )
-from services.suggestion_engine import analyze_symbol
-from services.logger_service import log_suggestion, get_logs
-from services.advisor_service import get_advisor_logs
-from services.advisor.portfolio_advisor import analyze_portfolio
-from services.advisor.swing_advisor import analyze_swing
-from services import advisor_service, binance_service, order_service
-from services import executor_service
-from services.market_analysis_service import analyze_orderbook_pressure
-from services.advisor_service import get_portfolio
+from backend.services.suggestion_engine import analyze_symbol
+from backend.services.logger_service import log_suggestion, get_logs
+from backend.services.advisor_service import get_advisor_logs
+from backend.services.advisor.portfolio_advisor import analyze_portfolio
+from backend.services.advisor.swing_advisor import analyze_swing
+from backend.services import advisor_service, binance_service, order_service
+from backend.services import executor_service
+from backend.services.market_analysis_service import analyze_orderbook_pressure
+from backend.services.advisor_service import get_portfolio
 from backend.agents.supervisor_agent import supervisor_agent
 from backend.services.candlestick_patterns_service import detect_candlestick_patterns
 from backend.services.binance_service import get_trade_history
 from backend.services.portfolio_service import build_positions
-from services.order_service import get_real_orders
-from services.position_service import get_all_positions
+from backend.services.order_service import get_real_orders
+from backend.services.position_service import get_all_positions
 
 
 from apscheduler.schedulers.background import BackgroundScheduler

@@ -1,4 +1,6 @@
 import numpy as np
+import statistics  # Necessário para estatísticas se Bandas de Bollinger forem calculadas aqui, mas já está no swing_analysis_service
+
 from backend.services.market_analysis_service import (
     get_indicators,
     calculate_atr,
@@ -10,12 +12,14 @@ from backend.services.orderbook_analysis_service import analyze_orderbook_pressu
 from backend.services.trade_log_service import log_analysis
 from backend.services.memory_service import (
     store_trade,
-    was_zone_broken,  # Este já está importado e será usado
+    was_zone_broken,
     increment_execution_counter,
     purge_old_memory,
 )
 from backend.services.get_indicators_multiframe import get_indicators_multiframe
-from backend.config.swing_config import SWING_CONFIG
+from backend.config.swing_config import (
+    SWING_CONFIG,
+)  # Certifica-te de que SWING_CONFIG tem os novos pesos
 from backend.services.price_service import get_price
 from backend.services.fibonacci_service import get_fibonacci_data_from_price_series
 from backend.services.fibonacci_strategy_service import evaluate_fibonacci_impact
@@ -25,13 +29,21 @@ from backend.services.volume_service import (
 )
 from backend.services.divergence_service import detect_rsi_divergence
 
+# IMPORTANTE: Importa a função das Bandas de Bollinger do novo serviço de análise de swing
+from backend.services.swing_analysis_service import calculate_bollinger_bands_swing
+
 
 def analyze_swing(symbol: str, candles: list):
+    """
+    Realiza a análise de swing para um determinado símbolo,
+    agregando múltiplos indicadores e gerando uma recomendação de trading.
+    """
     count = increment_execution_counter()
     if count % 50 == 0:
         purge_old_memory()
 
-    if len(candles) < 50:
+    # Validação inicial de dados
+    if len(candles) < 50:  # É bom ter candles suficientes para todos os indicadores
         return {
             "symbol": symbol,
             "recommendation": "HOLD",
@@ -43,30 +55,51 @@ def analyze_swing(symbol: str, candles: list):
             "reason": "Poucos candles para análise",
         }
 
-    closes = np.array([c["close"] for c in candles], dtype=float)
-    highs = np.array([c["high"] for c in candles], dtype=float)
-    lows = np.array([c["low"] for c in candles], dtype=float)
-    volumes = np.array([c["volume"] for c in candles], dtype=float)
+    # Preparação dos dados para indicadores
+    closes = np.array(
+        [float(c[4]) for c in candles], dtype=float
+    )  # Ajustado para usar c[4] (close) diretamente do formato Binance
+    highs = np.array(
+        [float(c[2]) for c in candles], dtype=float
+    )  # Ajustado para usar c[2] (high)
+    lows = np.array(
+        [float(c[3]) for c in candles], dtype=float
+    )  # Ajustado para usar c[3] (low)
+    volumes = np.array(
+        [float(c[5]) for c in candles], dtype=float
+    )  # Ajustado para usar c[5] (volume)
 
     raw_price = get_price(symbol)
     current_price = float(raw_price) if raw_price else closes[-1]
 
+    # --- Cálculos de Indicadores Existentes ---
     rsi, ema_fast, ema_slow = get_indicators(closes)
     atr = calculate_atr(highs, lows, closes)
     macd_cross = get_macd_cross(closes)
-    tf_indicators = get_indicators_multiframe(symbol)
+    tf_indicators = get_indicators_multiframe(
+        symbol
+    )  # Indicadores de múltiplos timeframes
     support_zone, resistance_zone = detect_zones(highs, lows, closes)
     pattern_result = detect_candlestick_patterns(candles)
     pattern_names = pattern_result.get("patterns", [])
     pattern_biases = pattern_result.get("bias", "neutro")
     pattern_strength = pattern_result.get("strength", "neutro")
-    pressure = analyze_orderbook_pressure(symbol)
+    pressure = analyze_orderbook_pressure(
+        symbol
+    )  # Assumindo que este é para swing, ou usar scalping_pressure_service
     price_near_ema = (
         abs(current_price - ema_slow) / current_price
         < SWING_CONFIG["entry_distance_ema"]
     )
 
-    # === Scoring ===
+    # --- Cálculo das Bandas de Bollinger para Swing ---
+    # Usamos um intervalo de tempo maior, por exemplo, "4h" ou "1d"
+    # A configuração (período e desvio padrão) deve ser definida em swing_analysis_service.py
+    swing_bb_data = calculate_bollinger_bands_swing(
+        symbol, interval="4h"
+    )  # Exemplo: 4 horas
+
+    # --- Scoring ---
     buy_score = 0
     sell_score = 0
     reason_buy = []
@@ -86,10 +119,10 @@ def analyze_swing(symbol: str, candles: list):
         buy_score += SWING_CONFIG["weights"]["macd"]
         reason_buy.append("Cruzamento MACD bullish")
     if tf_indicators["macd_cross"].get("1d") == "bullish":
-        buy_score += 0.1
+        buy_score += 0.1  # Pode ser configurado via SWING_CONFIG
         reason_buy.append("MACD 1D bullish confirmado")
     if tf_indicators["rsi"].get("4h", 100) < SWING_CONFIG["rsi_buy_level"]:
-        buy_score += 0.1
+        buy_score += 0.1  # Pode ser configurado via SWING_CONFIG
         reason_buy.append("RSI 4h em sobrevenda")
     # Zona de Suporte (se existir e não tiver sido quebrada recentemente)
     if support_zone:
@@ -114,10 +147,10 @@ def analyze_swing(symbol: str, candles: list):
         sell_score += SWING_CONFIG["weights"]["macd"]
         reason_sell.append("Cruzamento MACD bearish")
     if tf_indicators["macd_cross"].get("1d") == "bearish":
-        sell_score += 0.1
+        sell_score += 0.1  # Pode ser configurado via SWING_CONFIG
         reason_sell.append("MACD 1D bearish confirmado")
     if tf_indicators["rsi"].get("4h", 0) > SWING_CONFIG["rsi_sell_level"]:
-        sell_score += 0.1
+        sell_score += 0.1  # Pode ser configurado via SWING_CONFIG
         reason_sell.append("RSI 4h em sobrecompra")
     # Zona de Resistência (se existir e não tiver sido quebrada recentemente)
     if resistance_zone:
@@ -159,13 +192,16 @@ def analyze_swing(symbol: str, candles: list):
     )
 
     if is_current_volume_spike:
+        # Volume spike pode confirmar movimentos em qualquer direção
         buy_score += SWING_CONFIG["weights"]["volume_spike_confirmation"]
         sell_score += SWING_CONFIG["weights"]["volume_spike_confirmation"]
         reason_buy.append("Volume spike confirmado")
         reason_sell.append("Volume spike confirmado")
     else:
-        avg_volume = np.mean(volumes[-20:])
-        if volumes[-1] > 0.5 * avg_volume:
+        avg_volume = np.mean(volumes[-20:])  # Média dos últimos 20 candles de volume
+        if (
+            volumes[-1] > 0.5 * avg_volume
+        ):  # Se o volume atual é significativo (ex: >50% da média)
             buy_score += SWING_CONFIG["weights"]["volume_confirmation"]
             sell_score += SWING_CONFIG["weights"]["volume_confirmation"]
             reason_buy.append("Volume acima da média")
@@ -174,18 +210,20 @@ def analyze_swing(symbol: str, candles: list):
             reason_buy.append("Volume fraco")
             reason_sell.append("Volume fraco")
 
-    # --- PRESSÃO ---
+    # --- PRESSÃO (Assumindo que `analyze_orderbook_pressure` é para swing ou um proxy) ---
+    # Se usares o `scalping_pressure_service.py` para scalping, talvez queiras um `swing_pressure_service`
+    # ou ajustar a interpretação deste `pressure` para prazos mais longos.
     if pressure == "BUY_PRESSURE":
         buy_score += SWING_CONFIG["weights"]["orderbook"]
-        reason_buy.append("Pressão de compra")
+        reason_buy.append("Pressão de compra (orderbook)")
     elif pressure == "SELL_PRESSURE":
         sell_score += SWING_CONFIG["weights"]["orderbook"]
-        reason_sell.append("Pressão de venda")
+        reason_sell.append("Pressão de venda (orderbook)")
     elif pressure == "NEUTRAL":
         buy_score -= SWING_CONFIG["weights"]["pressure_neutral_penalty"]
         sell_score -= SWING_CONFIG["weights"]["pressure_neutral_penalty"]
-        reason_buy.append("Pressão neutra")
-        reason_sell.append("Pressão neutra")
+        reason_buy.append("Pressão neutra (orderbook)")
+        reason_sell.append("Pressão neutra (orderbook)")
 
     # --- Fibonacci ---
     fib_data = get_fibonacci_data_from_price_series(highs.tolist(), lows.tolist())
@@ -212,7 +250,53 @@ def analyze_swing(symbol: str, candles: list):
         sell_score += SWING_CONFIG["weights"]["rsi_divergence_bearish"]
         reason_sell.append(f"Divergência RSI bearish (idx: {rsi_divergence['index']})")
 
-    # === Decisão ===
+    # --- INTEGRAÇÃO DAS BANDAS DE BOLLINGER (SWING) ---
+    bb_position = swing_bb_data.get("current_price_position")
+    band_width = swing_bb_data.get("band_width")
+
+    if bb_position == "ABOVE_UPPER":
+        # Preço acima da banda superior: forte tendência de alta ou sobrecompra.
+        # Adiciona pontos de compra, mas com um peso que considere o risco de reversão.
+        buy_score += SWING_CONFIG["weights"].get("bb_above_upper", 0.1)
+        reason_buy.append("BB: Preço acima da banda superior")
+        # Se também houver sinais de venda, pode ser exaustão de compra
+        if sell_score > 0:  # Exemplo simples, pode ser mais sofisticado
+            sell_score += SWING_CONFIG["weights"].get(
+                "bb_above_upper_reversal_potential", 0.05
+            )
+            reason_sell.append("BB: Preço acima da banda superior (potencial reversão)")
+    elif bb_position == "BELOW_LOWER":
+        # Preço abaixo da banda inferior: forte tendência de baixa ou sobrevenda.
+        sell_score += SWING_CONFIG["weights"].get("bb_below_lower", 0.1)
+        reason_sell.append("BB: Preço abaixo da banda inferior")
+        # Se também houver sinais de compra, pode ser exaustão de venda
+        if buy_score > 0:  # Exemplo simples
+            buy_score += SWING_CONFIG["weights"].get(
+                "bb_below_lower_reversal_potential", 0.05
+            )
+            reason_buy.append("BB: Preço abaixo da banda inferior (potencial reversão)")
+    elif bb_position == "BETWEEN_MIDDLE_AND_UPPER":
+        # Preço entre a média e a banda superior: viés de alta.
+        buy_score += SWING_CONFIG["weights"].get("bb_between_middle_upper", 0.05)
+        reason_buy.append("BB: Preço entre média e banda superior (viés de alta)")
+    elif bb_position == "BETWEEN_MIDDLE_AND_LOWER":
+        # Preço entre a média e a banda inferior: viés de baixa.
+        sell_score += SWING_CONFIG["weights"].get("bb_between_middle_lower", 0.05)
+        reason_sell.append("BB: Preço entre média e banda inferior (viés de baixa)")
+
+    # Lógica para detetar compressão (baixa volatilidade) para potenciais rupturas
+    # O valor para 'bb_low_volatility_threshold' deve ser definido em SWING_CONFIG
+    if band_width is not None and band_width < SWING_CONFIG.get(
+        "bb_low_volatility_threshold", 0.005
+    ):
+        # Em baixa volatilidade, podemos penalizar trades ou esperar por confirmação forte
+        buy_score -= SWING_CONFIG["weights"].get("bb_low_volatility_penalty", 0.1)
+        sell_score -= SWING_CONFIG["weights"]["bb_low_volatility_penalty"]
+        reason_buy.append("BB: Baixa volatilidade (bandas estreitas)")
+        reason_sell.append("BB: Baixa volatilidade (bandas estreitas)")
+        # Também podes considerar um sinal específico como "WAIT_FOR_BREAKOUT"
+
+    # === Decisão Final ===
     recommendation = "HOLD"
     final_confidence = 0
     final_reason = []
@@ -232,12 +316,12 @@ def analyze_swing(symbol: str, candles: list):
         tp1 = round(entry_1 + SWING_CONFIG["tp_atr_multiples"][0] * atr, 4)
         tp2 = round(entry_1 + SWING_CONFIG["tp_atr_multiples"][1] * atr, 4)
         tp3 = round(entry_1 + SWING_CONFIG["tp_atr_multiples"][2] * atr, 4)
-        if resistance_zone:
+        if resistance_zone:  # Ajusta TP para não ir além da resistência conhecida
             tp3 = min(tp3, max(resistance_zone))
         take_profits = [tp1, tp2, tp3]
 
         atr_sl = round(entry_1 - SWING_CONFIG["sl_atr_multiple"] * atr, 4)
-        if support_zone:
+        if support_zone:  # Ajusta SL para considerar suporte conhecido
             zone_sl = round(
                 min(support_zone) - SWING_CONFIG["zone_sl_buffer_atr"] * atr, 4
             )
@@ -257,12 +341,14 @@ def analyze_swing(symbol: str, candles: list):
         tp1 = round(entry_1 - SWING_CONFIG["tp_atr_multiples"][0] * atr, 4)
         tp2 = round(entry_1 - SWING_CONFIG["tp_atr_multiples"][1] * atr, 4)
         tp3 = round(entry_1 - SWING_CONFIG["tp_atr_multiples"][2] * atr, 4)
-        if resistance_zone:
-            tp3 = max(tp3, min(resistance_zone))
+        if support_zone:  # Ajusta TP para não ir além do suporte conhecido
+            tp3 = max(
+                tp3, min(support_zone)
+            )  # Para venda, TP3 deve ser inferior ou igual ao suporte
         take_profits = [tp1, tp2, tp3]
 
         atr_sl = round(entry_1 + SWING_CONFIG["sl_atr_multiple"] * atr, 4)
-        if resistance_zone:
+        if resistance_zone:  # Ajusta SL para considerar resistência conhecida
             zone_sl = round(
                 max(resistance_zone) + SWING_CONFIG["zone_sl_buffer_atr"] * atr, 4
             )
@@ -299,7 +385,7 @@ def analyze_swing(symbol: str, candles: list):
                     take_profits.append(round(max(potential_tps), 4))
                     take_profits = sorted(list(set(take_profits)), reverse=True)
 
-    # Validação final
+    # Validação final de entradas e stop loss
     if any(e <= 0 for e in entries) or (stop_loss is not None and stop_loss <= 0):
         return {
             "symbol": symbol,
@@ -312,6 +398,7 @@ def analyze_swing(symbol: str, candles: list):
             "reason": "Entradas ou SL inválidos",
         }
 
+    # Cálculo e validação do Risco/Recompensa (R/R)
     try:
         risk = abs(entries[0] - stop_loss)
         reward = abs(take_profits[0] - entries[0])
@@ -331,7 +418,7 @@ def analyze_swing(symbol: str, candles: list):
             }
 
         elif rr_ratio < SWING_CONFIG["min_rr"]:
-            final_confidence *= 0.5
+            final_confidence *= 0.5  # Reduz a confiança se R/R não for ideal
             return {
                 "symbol": symbol,
                 "recommendation": "HOLD",
@@ -344,6 +431,7 @@ def analyze_swing(symbol: str, candles: list):
             }
 
     except Exception as e:
+        # Se ocorrer um erro no cálculo do R/R, mantém HOLD
         return {
             "symbol": symbol,
             "recommendation": "HOLD",
@@ -355,9 +443,9 @@ def analyze_swing(symbol: str, candles: list):
             "reason": f"Erro ao calcular R/R: {e}",
         }
 
-    # Store trade
+    # Armazenar o trade e logar a análise
     position_size = round(SWING_CONFIG["base_position"] * final_confidence, 2)
-    if rr_ratio > 0:
+    if rr_ratio > 0:  # Só armazena se o R/R for válido
         store_trade(
             symbol,
             recommendation,
@@ -376,9 +464,9 @@ def analyze_swing(symbol: str, candles: list):
             "buy_score": buy_score,
             "sell_score": sell_score,
             "price": current_price,
-            "rsi": rsi,
-            "ema_fast": ema_fast,
-            "ema_slow": ema_slow,
+            "rsi": rsi.tolist(),  # Converter numpy array para list para logging
+            "ema_fast": ema_fast.tolist(),  # Converter numpy array para list para logging
+            "ema_slow": ema_slow.tolist(),  # Converter numpy array para list para logging
             "macd_cross": macd_cross,
             "pattern_names": pattern_names,
             "pattern_biases": pattern_biases,
@@ -396,6 +484,7 @@ def analyze_swing(symbol: str, candles: list):
             "volume_ema": volume_ema,
             "rsi_divergence_type": rsi_divergence["type"],
             "rsi_divergence_index": rsi_divergence["index"],
+            "bollinger_bands_swing": swing_bb_data,  # Adicionado dados das Bandas de Bollinger
         },
     )
 
@@ -407,5 +496,5 @@ def analyze_swing(symbol: str, candles: list):
         "take_profits": take_profits,
         "stop_loss": stop_loss,
         "position_size": position_size,
-        "reason": ", ".join(final_reason),
+        "reason": ", ".join(final_reason),  # Junta as razões numa string
     }

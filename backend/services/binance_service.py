@@ -1,6 +1,7 @@
 from binance.spot import Spot
 from backend.config import settings
 import requests
+import asyncio
 from backend.services.trade_log_service import log_trade
 from datetime import datetime
 
@@ -23,13 +24,35 @@ def get_portfolio():
     return portfolio
 
 
-def get_candles(symbol, interval="1h", limit=100):
+async def get_candles(symbol, interval="1m", limit=30):
+    """
+    Retorna candles completos (open_time, open, high, low, close, volume)
+    de forma assíncrona, sem bloquear o loop principal.
+    """
     symbol = symbol.upper()
     if not symbol.endswith("USDT"):
         symbol += "USDT"
-    klines = client.klines(symbol, interval, limit=limit)
-    closes = [float(kline[4]) for kline in klines]
-    return closes
+
+    def fetch_klines():
+        return client.klines(symbol, interval, limit=limit)
+
+    try:
+        candles_raw = await asyncio.to_thread(fetch_klines)
+        candles = [
+            [
+                int(candle[0]),  # open_time
+                candle[1],  # open
+                candle[2],  # high
+                candle[3],  # low
+                candle[4],  # close
+                candle[5],  # volume
+            ]
+            for candle in candles_raw
+        ]
+        return candles
+    except Exception as e:
+        print(f"[ERRO] get_candles({symbol}): {e}")
+        return []
 
 
 def get_ohlc(symbol, interval="1h", limit=100):
@@ -69,7 +92,6 @@ def get_portfolio_with_value():
         value = None
         price = None
 
-        # Tenta encontrar preço para moedas conhecidas
         for sufixo in ["USDT", "BUSD", "BTC", "ETH"]:
             pair = symbol + sufixo
             price = get_price(pair)

@@ -1,6 +1,6 @@
 import json
 import os
-from services.binance_service import get_price
+from backend.services.binance_service import get_price
 
 ORDERS_FILE = os.path.join(os.path.dirname(__file__), "..", "orders.json")
 

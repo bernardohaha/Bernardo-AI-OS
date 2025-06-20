@@ -1,0 +1,10 @@
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.log
+.env
+orders.json
+backend/logs/
+backend/services/notifier_service.py
+backend/telegram_test.py

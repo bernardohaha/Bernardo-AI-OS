@@ -1,5 +1,5 @@
 import time
-from services.advisor import positions_advisor, technical_advisor
+from backend.services.advisor import positions_advisor, technical_advisor
 
 
 def run_advisors():

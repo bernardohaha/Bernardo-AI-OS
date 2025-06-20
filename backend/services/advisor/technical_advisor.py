@@ -1,6 +1,6 @@
 import numpy as np
 import talib
-from services.binance_service import get_ohlc
+from backend.services.binance_service import get_ohlc
 from services import notifier_service
 
 

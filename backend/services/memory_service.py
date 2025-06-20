@@ -142,3 +142,43 @@ def already_traded_recently(symbol: str, side: str, hours: int = 24) -> bool:
             except:
                 continue
     return False
+
+
+# ------------------- SCALPING AGENT MEMORY -------------------
+
+
+def save_trade_state(
+    symbol, entry_price, quantity, entry_data, fee, tp_price, sl_price
+):
+    data = _load_memory()
+    symbol = symbol.upper()
+
+    scalping_entry = {
+        "entry_price": entry_price,
+        "quantity": quantity,
+        "entry_data": entry_data,
+        "fee": fee,
+        "tp_price": tp_price,
+        "sl_price": sl_price,
+        "trailing_active": False,
+        "timestamp": datetime.utcnow().isoformat(),
+    }
+
+    # Atualiza ou adiciona a entrada de scalping
+    data.setdefault("scalping_trades", {})
+    data["scalping_trades"][symbol] = scalping_entry
+    _save_memory(data)
+
+
+def get_current_position(symbol):
+    data = _load_memory()
+    symbol = symbol.upper()
+    return data.get("scalping_trades", {}).get(symbol)
+
+
+def purge_closed_trades(symbol):
+    data = _load_memory()
+    symbol = symbol.upper()
+    if "scalping_trades" in data and symbol in data["scalping_trades"]:
+        del data["scalping_trades"][symbol]
+        _save_memory(data)
