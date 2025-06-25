@@ -7,6 +7,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".
 import pandas as pd
 import talib  # Importar talib aqui
 import matplotlib.pyplot as plt
+import numpy as np  # Adicionar import para numpy
 
 from backend.agents.agent_scalping_offline import agent_scalping_offline
 from backend.backtesting.data_loader import load_csv_candles
@@ -18,6 +19,12 @@ from backend.backtesting.utils.metrics import (
     max_drawdown,
 )
 from backend.config.config_scalping import SCALPING_CONFIG
+
+# Importar as novas funções
+from backend.services.scalping_logic_service_offline import (
+    calculate_dynamic_tp_sl,
+    should_scale_position,
+)
 
 
 def plot_backtest_results(df: pd.DataFrame, trades_df: pd.DataFrame):
@@ -34,7 +41,7 @@ def plot_backtest_results(df: pd.DataFrame, trades_df: pd.DataFrame):
     # Plotar entradas
     entry_trades = trades_df[trades_df["type"] == "entry"]
     ax1.scatter(
-        entry_trades["time"],
+        entry_trades.index,
         entry_trades["price"],
         marker="^",
         color="green",
@@ -45,7 +52,7 @@ def plot_backtest_results(df: pd.DataFrame, trades_df: pd.DataFrame):
     # Plotar saídas
     exit_trades = trades_df[trades_df["type"] == "exit"]
     ax1.scatter(
-        exit_trades["time"],
+        exit_trades.index,
         exit_trades["price"],
         marker="v",
         color="red",
@@ -54,54 +61,61 @@ def plot_backtest_results(df: pd.DataFrame, trades_df: pd.DataFrame):
         zorder=5,
     )
 
-    ax1.set_title("Preço e EMA9 com Sinais de Trade", fontsize=14)
-    ax1.set_ylabel("Preço", fontsize=12)
+    ax1.set_title("Preço de Fecho e EMA9 com Sinais de Trade")
+    ax1.set_ylabel("Preço")
     ax1.legend()
-    ax1.grid(True, linestyle=":", alpha=0.7)
+    ax1.grid(True)
 
-    # Gráfico de RSI
+    # Gráfico RSI
     ax2.plot(df.index, df["rsi"], label="RSI", color="purple")
     ax2.axhline(
         SCALPING_CONFIG["RSI_ENTRY_THRESHOLD"],
-        color="red",
-        linestyle=":",
-        alpha=0.8,
-        label=f"RSI Entrada ({SCALPING_CONFIG['RSI_ENTRY_THRESHOLD']})",
+        color="green",
+        linestyle="--",
+        label="RSI Entry Threshold",
     )
     ax2.axhline(
         SCALPING_CONFIG["RSI_EXIT_THRESHOLD"],
-        color="green",
-        linestyle=":",
-        alpha=0.8,
-        label=f"RSI Saída ({SCALPING_CONFIG['RSI_EXIT_THRESHOLD']})",
+        color="red",
+        linestyle="--",
+        label="RSI Exit Threshold",
     )
-    ax2.set_title("Índice de Força Relativa (RSI)", fontsize=14)
-    ax2.set_ylabel("RSI", fontsize=12)
-    ax2.set_ylim(0, 100)
+    ax2.set_title("RSI")
+    ax2.set_ylabel("Valor")
     ax2.legend()
-    ax2.grid(True, linestyle=":", alpha=0.7)
+    ax2.grid(True)
+
+    # Gráfico MACD
+    ax3.plot(df.index, df["macd"], label="MACD", color="blue")
+    ax3.plot(df.index, df["macdsignal"], label="MACD Signal", color="red")
+    ax3.bar(
+        df.index,
+        df["macdhist"],
+        label="MACD Histograma",
+        color="gray",
+        alpha=0.7,
+    )
+    ax3.axhline(0, color="black", linestyle="--")
+    ax3.set_title("MACD")
+    ax3.set_ylabel("Valor")
+    ax3.legend()
+    ax3.grid(True)
 
     # Gráfico de Volume
-    ax3.bar(df.index, df["volume"], label="Volume", color="grey", alpha=0.7)
-    ax3.plot(
-        df.index, df["volume_sma"], label="Volume SMA", color="orange", linestyle="--"
+    ax4.bar(df.index, df["volume"], label="Volume", color="orange", alpha=0.7)
+    ax4.plot(
+        df.index,
+        df["volume_sma"],
+        label="Volume SMA",
+        color="blue",
+        linestyle="--",
     )
-    ax3.set_title("Volume de Negociação", fontsize=14)
-    ax3.set_ylabel("Volume", fontsize=12)
-    ax3.legend()
-    ax3.grid(True, linestyle=":", alpha=0.7)
-
-    # Gráfico de MACD Histograma
-    colors_macd = ["green" if x > 0 else "red" for x in df["macdhist"]]
-    ax4.bar(df.index, df["macdhist"], label="MACD Histograma", color=colors_macd)
-    ax4.axhline(0, color="black", linestyle="-", linewidth=0.8)
-    ax4.set_title("MACD Histograma", fontsize=14)
-    ax4.set_ylabel("Valor", fontsize=12)
+    ax4.set_title("Volume")
+    ax4.set_xlabel("Data")
+    ax4.set_ylabel("Volume")
     ax4.legend()
-    ax4.grid(True, linestyle=":", alpha=0.7)
+    ax4.grid(True)
 
-    plt.xlabel("Data/Hora", fontsize=12)
-    plt.xticks(rotation=45, ha="right")
     plt.tight_layout()
     plt.show()
 
@@ -110,55 +124,26 @@ def run_backtest():
     candles = load_csv_candles("SUIUSDT", "1m", folder="scalping", limit=1440 * 9)
     df = pd.DataFrame(candles)
 
-    # 1. Converter open_time para datetime e definir como índice
-    df["open_time"] = pd.to_datetime(df["open_time"], unit="ns", errors="coerce")
-    df.set_index("open_time", inplace=True)
-    # LINHA REMOVIDA: df.dropna(subset=["open_time"], inplace=True)
-    df.sort_index(inplace=True)
+    trades = []
+    equity = 1000.0
+    position = None
+    plot_trades_events = []  # Para os teus plots
 
-    # 2. Garantir que as colunas de preço e volume são numéricas
-    for col in ["open", "high", "low", "close", "volume"]:
-        df[col] = pd.to_numeric(df[col], errors="coerce")
+    # Adicionar colunas de tempo para plotagem
+    # Os timestamps parecem estar em microssegundos, dividir por 1000 para obter milissegundos
+    df["open_time"] = pd.to_datetime(
+        df["open_time"] / 1000, unit="ms"
+    )  # Converte o timestamp original para datetime para o plot
+    df.set_index("open_time", inplace=True)  # Define open_time como index para o plot
 
-    # 3. Remover linhas com NaNs nas colunas críticas ANTES de calcular indicadores
-    df.dropna(subset=["open", "high", "low", "close", "volume"], inplace=True)
+    # Pré-calcular todos os indicadores para o DataFrame completo
+    # Converter Series do Pandas para arrays NumPy com dtype float64 para compatibilidade com TA-Lib
+    close_prices = df["close"].values.astype(np.float64)
+    high_prices = df["high"].values.astype(np.float64)
+    low_prices = df["low"].values.astype(np.float64)
 
-    # 4. Verificar se o DataFrame tem dados suficientes para os indicadores
-    min_candles_for_indicators = max(
-        SCALPING_CONFIG["RSI_PERIOD"],
-        SCALPING_CONFIG["EMA_PERIOD"],
-        SCALPING_CONFIG["VOLUME_SMA_PERIOD"],
-        SCALPING_CONFIG["MACD_SLOW"] + SCALPING_CONFIG["MACD_SIGNAL"],
-        SCALPING_CONFIG.get("ATR_PERIOD", 14),
-    )
-    if len(df) < min_candles_for_indicators:
-        print(
-            f"Erro: Dados insuficientes para calcular todos os indicadores após a limpeza inicial."
-        )
-        print(
-            f"Tamanho do DataFrame: {len(df)}. Mínimo necessário baseado nos períodos: {min_candles_for_indicators}"
-        )
-        return {
-            "final_capital": 1000,
-            "profit": 0,
-            "win_rate": 0,
-            "profit_factor": 0,
-            "max_drawdown": 0,
-            "avg_pnl": 0,
-            "total_trades": 0,
-        }
-
-    # 5. CALCULAR TODOS OS INDICADORES AQUI NO DATAFRAME PRINCIPAL (df)
-    # Convert Pandas Series to NumPy array with float64 dtype for TA-Lib
-    close_prices = df["close"].values.astype(float)
-    high_prices = df["high"].values.astype(float)
-    low_prices = df["low"].values.astype(float)
-
-    df["rsi"] = talib.RSI(close_prices, timeperiod=SCALPING_CONFIG["RSI_PERIOD"])
     df["ema9"] = talib.EMA(close_prices, timeperiod=SCALPING_CONFIG["EMA_PERIOD"])
-    df["volume_sma"] = (
-        df["volume"].rolling(window=SCALPING_CONFIG["VOLUME_SMA_PERIOD"]).mean()
-    )
+    df["rsi"] = talib.RSI(close_prices, timeperiod=SCALPING_CONFIG["RSI_PERIOD"])
     df["macd"], df["macdsignal"], df["macdhist"] = talib.MACD(
         close_prices,
         fastperiod=SCALPING_CONFIG["MACD_FAST"],
@@ -166,69 +151,64 @@ def run_backtest():
         signalperiod=SCALPING_CONFIG["MACD_SIGNAL"],
     )
     df["atr"] = talib.ATR(
-        high_prices,
-        low_prices,
-        close_prices,
-        timeperiod=SCALPING_CONFIG.get("ATR_PERIOD", 14),
+        high_prices, low_prices, close_prices, timeperiod=SCALPING_CONFIG["ATR_PERIOD"]
+    )
+    df["volume_sma"] = (
+        df["volume"].rolling(window=SCALPING_CONFIG["VOLUME_SMA_PERIOD"]).mean()
     )
 
-    # 6. Remover NaNs que surgem no INÍCIO após o cálculo dos indicadores (primeiras N linhas)
-    df.dropna(inplace=True)
+    for i in range(
+        SCALPING_CONFIG["ATR_PERIOD"] + SCALPING_CONFIG["EMA_PERIOD"], len(df)
+    ):  # Ajustar o início do loop para garantir dados suficientes para ATR e EMA
+        window = df.iloc[
+            :i
+        ].copy()  # A janela agora contém todos os dados até o ponto atual, com indicadores pré-calculados
 
-    # 7. Verificar novamente se o DataFrame tem dados suficientes para a lógica do agente
-    if len(df) < 2:  # Mínimo de 2 candles para previous e latest na lógica de sinal
-        print(
-            "Erro: Dados insuficientes após o cálculo e limpeza dos indicadores. Mínimo de 2 candles necessários para a lógica de entrada/saída."
-        )
-        return {
-            "final_capital": 1000,
-            "profit": 0,
-            "win_rate": 0,
-            "profit_factor": 0,
-            "max_drawdown": 0,
-            "avg_pnl": 0,
-            "total_trades": 0,
-        }
-
-    trades = []
-    equity = 1000.0
-    position = None
-
-    plot_trades_events = []
-
-    # lookback_window_agent define quantos candles são passados para a lógica do agente.
-    # Como os indicadores já estão no DF e a lógica de sinal só precisa de latest e previous, 2 é o suficiente.
-    lookback_window_agent = 2
-
-    for i in range(len(df)):
+        # Certificar que a janela tem dados suficientes para os cálculos na lógica do agente
         if (
-            i < lookback_window_agent - 1
-        ):  # Garante que temos pelo menos N candles para formar a janela
+            len(window)
+            < max(
+                SCALPING_CONFIG["RSI_PERIOD"],
+                SCALPING_CONFIG["EMA_PERIOD"],
+                SCALPING_CONFIG["VOLUME_SMA_PERIOD"],
+                SCALPING_CONFIG["MACD_SLOW"],
+                SCALPING_CONFIG["ATR_PERIOD"],
+            )
+            + 1
+        ):
             continue
 
-        # current_window_for_agent agora contém a fatia do DataFrame COM os indicadores
-        current_window_for_agent = df.iloc[i - (lookback_window_agent - 1) : i + 1]
+        current_price = df.iloc[i]["close"]
+        current_time = df.index[i]
 
-        current_price = current_window_for_agent.iloc[-1]["close"]
-        current_time = current_window_for_agent.index[-1]
-
-        result = agent_scalping_offline("SUIUSDT", current_window_for_agent, position)
+        # Passar a janela completa com indicadores para o agente
+        result = agent_scalping_offline(
+            "SUIUSDT", window, position
+        )  # Passa a posição atual
 
         if not position and result["entry"]:
+            # Usar a nova função para calcular TP/SL dinâmicos
+            tp, sl = calculate_dynamic_tp_sl(
+                result["entry_price"],
+                result["entry_data"]["atr"],
+                result["entry_data"]["rsi"],
+            )
             position = {
                 "entry_price": result["entry_price"],
-                "tp": result["tp"],
-                "sl": result["sl"],
+                "tp": tp,
+                "sl": sl,
                 "entry_time": current_time,
+                "scale_count": 0,  # Inicializa o contador de escalonamento
             }
             print(
-                f"ENTRADA em {current_time} | Preço: {position['entry_price']:.4f} | TP: {position['tp']:.4f} | SL: {position['sl']:.4f}"
+                f"ENTRADA em {current_time} | Preço: {result['entry_price']:.4f} | TP: {tp:.4f} | SL: {sl:.4f}"
             )
             plot_trades_events.append(
-                {"time": current_time, "price": current_price, "type": "entry"}
+                {"time": current_time, "price": result["entry_price"], "type": "entry"}
             )
 
         elif position:
+            # Lógica de saída: TP/SL fixos ou sinais do agente
             if current_price >= position["tp"]:
                 pnl = position["tp"] - position["entry_price"]
                 trades.append(pnl)
@@ -252,9 +232,10 @@ def run_backtest():
                 )
                 position = None
             else:
+                # Verifica a saída do agente
                 agent_exit_signal, reason = result["exit"], result["reason"]
                 if agent_exit_signal:
-                    pnl = current_price - position["entry_price"]
+                    pnl = current_price - position["entry_price"]  # PnL ao preço atual
                     trades.append(pnl)
                     equity += pnl
                     print(
@@ -265,12 +246,34 @@ def run_backtest():
                     )
                     position = None
 
+                # Lógica de escalonamento (pyramiding)
+                # Esta lógica deve ser executada se não houver sinal de saída e ainda houver uma posição aberta
+                if position:
+                    can_scale, scale_size = should_scale_position(window, position)
+                    if can_scale:
+                        # Aqui você precisaria simular a adição de mais capital à posição
+                        # Para este backtest offline, podemos apenas atualizar o entry_price médio
+                        # e o TP/SL se for uma estratégia que recalcula.
+                        # Por simplicidade, vamos apenas incrementar o scale_count para visualização.
+                        position["scale_count"] += 1
+                        print(
+                            f"ESCALONAMENTO DE POSIÇÃO em {current_time} | Preço: {current_price:.4f} | Tamanho: {scale_size}"
+                        )
+                        # Se fores recalcular TP/SL após escalar, fá-lo aqui:
+                        # position["tp"], position["sl"] = calculate_dynamic_tp_sl(...)
+
     trades_df_for_plot = pd.DataFrame(plot_trades_events)
+    trades_df_for_plot["time"] = pd.to_datetime(
+        trades_df_for_plot["time"]
+    )  # Converte o timestamp das trades para datetime
+    trades_df_for_plot.set_index("time", inplace=True)
 
     equity_curve = generate_equity_curve(1000, trades)
 
     # Plotar os resultados no final
-    plot_backtest_results(df, trades_df_for_plot)
+    plot_backtest_results(
+        df, trades_df_for_plot
+    )  # Passa o DF completo com indicadores e o DF de trades
 
     return {
         "final_capital": equity,
@@ -285,6 +288,9 @@ def run_backtest():
 
 if __name__ == "__main__":
     results = run_backtest()
-    print("\n--- Resultados do Backtest ---")
+    print("\n===== Resultados do Backtest =====")
     for key, value in results.items():
-        print(f"{key.replace('_', ' ').title()}: {value}")
+        if isinstance(value, float):
+            print(f"{key}: {value:.2f}")
+        else:
+            print(f"{key}: {value}")
