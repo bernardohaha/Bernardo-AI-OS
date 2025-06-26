@@ -25,70 +25,30 @@ def detect_entry_signal_from_df(df: pd.DataFrame):
         "close",
         "high",
         "low",
+        "lowerband",
     ]
     if not all(col in df.columns for col in required_indicators):
         print("Erro: Indicadores em falta para detecção de entrada")
-        return False, {}
+        return (
+            False,
+            {},
+        )  # Retorna um resultado sem entrada se os indicadores não estiverem disponíveis
 
-    # Sistema de pontuação para entrada
+    # Sistema de pontuação para entrada (LÓGICA SIMPLIFICADA)
     entry_score = 0
-    max_score = 10
+    max_score = 2  # Agora baseado em 2 condições para manter a formatação do print
 
-    # 1. Condição de Momentum (RSI) - Peso 2
-    if 30 <= latest["rsi"] <= 45:  # RSI mais baixo para entrada agressiva
-        entry_score += 2
-    elif 45 < latest["rsi"] <= 50:
-        entry_score += 1
-
-    # 2. Tendência (EMA) - Peso 2
-    if latest["close"] > latest["ema9"] and previous["close"] <= previous["ema9"]:
-        # Cruzamento para cima da EMA (sinal forte)
-        entry_score += 2
-    elif latest["close"] > latest["ema9"]:
-        # Acima da EMA (sinal moderado)
-        entry_score += 1
-
-    # 3. Volume - Peso 1
-    volume_ratio = latest["volume"] / latest["volume_sma"]
-    if volume_ratio >= 1.5:  # Volume 50% acima da média
-        entry_score += 1
-    elif volume_ratio >= 1.2:  # Volume 20% acima da média
-        entry_score += 0.5
-
-    # 4. MACD Momentum - Peso 2
-    if latest["macdhist"] > 0 and latest["macdhist"] > previous["macdhist"]:
-        # MACD histograma positivo e crescente
-        entry_score += 2
-    elif latest["macdhist"] > 0:
-        # MACD histograma apenas positivo
-        entry_score += 1
-
-    # 5. Padrão de Candlestick - Peso 1
-    candle_body = abs(latest["close"] - latest["open"])
-    candle_range = latest["high"] - latest["low"]
-    body_ratio = candle_body / candle_range if candle_range > 0 else 0
-
-    if latest["close"] > latest["open"] and body_ratio > 0.6:
-        # Candle verde com corpo grande
-        entry_score += 1
-    elif latest["close"] > latest["open"]:
-        # Apenas candle verde
-        entry_score += 0.5
-
-    # 6. Volatilidade (ATR) - Peso 1
-    # Evitar entradas em períodos de baixa volatilidade
-    if latest["atr"] > df["atr"].rolling(20).mean().iloc[-1] * 1.1:
-        entry_score += 1
-
-    # 7. Confirmação de Breakout - Peso 1
-    # Preço acima do máximo dos últimos 3 candles
-    if len(df) >= 4:
-        recent_high = df.iloc[-4:-1]["high"].max()
-        if latest["close"] > recent_high:
-            entry_score += 1
+    # Nova Lógica de Entrada Simplificada: Comprar se preço estiver abaixo da BBand inferior E RSI baixo
+    # 1. Condição de Bandas de Bollinger e RSI
+    if (
+        "lowerband" in latest
+        and latest["close"] < latest["lowerband"]
+        and latest["rsi"] < SCALPING_CONFIG["RSI_ENTRY_LEVEL"]
+    ):
+        entry_score = 2  # Apenas para que o score seja 2/2 quando a condição é metida
 
     # Decisão de entrada baseada na pontuação
-    entry_threshold = 6  # Requer pelo menos 60% da pontuação máxima
+    entry_threshold = 2  # Requer que ambas as condições sejam metidas
     entry = entry_score >= entry_threshold
 
     if entry:
@@ -99,11 +59,9 @@ def detect_entry_signal_from_df(df: pd.DataFrame):
     entry_data = {
         "rsi": round(latest["rsi"], 2),
         "ema9": round(latest["ema9"], 4),
-        "volume_ratio": round(volume_ratio, 2),
         "macdhist": round(latest["macdhist"], 5),
         "atr": round(latest["atr"], 4),
         "entry_score": entry_score,
-        "body_ratio": round(body_ratio, 2),
         "candle": "verde" if latest["close"] > latest["open"] else "vermelho",
     }
 
@@ -129,11 +87,7 @@ def detect_exit_signal_from_df(df: pd.DataFrame, position: dict):
     entry_price = position["entry_price"]
     current_pnl = current_price - entry_price
 
-    # 1. Saída por RSI muito alto (overbought)
-    if latest["rsi"] >= 70:  # RSI mais alto para saída
-        return True, f"RSI overbought ({latest['rsi']:.1f})"
-
-    # 2. Saída por deterioração do MACD
+    # 1. Saída por deterioração do MACD
     if (
         latest["macdhist"] < 0 and previous["macdhist"] > 0 and current_pnl > 0
     ):  # Só sai se estiver em lucro
@@ -154,23 +108,16 @@ def detect_exit_signal_from_df(df: pd.DataFrame, position: dict):
         if candle_body > avg_atr * 0.8:  # Candle vermelho > 80% do ATR médio
             return True, "Reversão forte"
 
-    # 5. Trailing stop baseado em ATR
-    if current_pnl > latest["atr"] * 0.5:  # Se lucro > 50% do ATR
-        trailing_stop = current_price - (latest["atr"] * 0.3)  # Stop mais apertado
-        if entry_price < trailing_stop:  # Atualiza o stop loss mental
-            # Esta lógica seria melhor implementada no loop principal
-            pass
-
     return False, ""
 
 
 def calculate_dynamic_tp_sl(
     entry_price: float, atr: float, rsi: float, volatility_factor: float = 1.0
 ):
-    """
-    Calcula TP e SL dinâmicos baseados na volatilidade e condições de mercado
-    """
-    # Ajusta multiplicadores baseado no RSI
+    # Ajusta multiplicadores baseado no RSI para TP/SL
+    # Estes multiplicadores devem ser ajustados e testados para o scalping
+    # Valores menores podem ser mais adequados para capturar pequenos lucros rapidamente
+
     if rsi <= 35:  # Muito oversold - maior potencial de alta
         tp_multiplier = 2.0
         sl_multiplier = 0.8
@@ -184,9 +131,17 @@ def calculate_dynamic_tp_sl(
     # Ajusta pela volatilidade
     tp_multiplier *= volatility_factor
     sl_multiplier *= volatility_factor
-
-    tp = round(entry_price + (atr * tp_multiplier), 5)
-    sl = round(entry_price - (atr * sl_multiplier), 5)
+    # Usar SCALPING_CONFIG para definir multiplicadores base ou limites
+    tp = round(
+        entry_price
+        + (atr * tp_multiplier * SCALPING_CONFIG.get("TP_ATR_MULTIPLIER", 1.0)),
+        5,
+    )
+    sl = round(
+        entry_price
+        - (atr * sl_multiplier * SCALPING_CONFIG.get("SL_ATR_MULTIPLIER", 1.0)),
+        5,
+    )
 
     return tp, sl
 

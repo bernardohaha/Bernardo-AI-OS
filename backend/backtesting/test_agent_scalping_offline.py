@@ -27,7 +27,9 @@ from backend.services.scalping_logic_service_offline import (
 )
 
 
-def plot_backtest_results(df: pd.DataFrame, trades_df: pd.DataFrame):
+def plot_backtest_results(
+    df: pd.DataFrame, trades_df: pd.DataFrame, trailing_stop_df: pd.DataFrame
+):
     """
     Função para plotar os resultados do backtest, incluindo indicadores e trades.
     Assume que o df já tem os indicadores calculados.
@@ -37,6 +39,20 @@ def plot_backtest_results(df: pd.DataFrame, trades_df: pd.DataFrame):
     # Gráfico de Preço e EMA
     ax1.plot(df.index, df["close"], label="Preço de Fecho", color="blue")
     ax1.plot(df.index, df["ema9"], label="EMA9", color="red", linestyle="--")
+    # Plotar Bandas de Bollinger
+    ax1.plot(df.index, df["upperband"], label="BBand Superior", color="grey", alpha=0.5)
+    ax1.plot(
+        df.index,
+        df["middleband"],
+        label="BBand Média",
+        color="grey",
+        linestyle="--",
+        alpha=0.5,
+    )
+    ax1.plot(df.index, df["lowerband"], label="BBand Inferior", color="grey", alpha=0.5)
+    ax1.fill_between(
+        df.index, df["upperband"], df["lowerband"], color="grey", alpha=0.1
+    )
 
     # Plotar entradas
     entry_trades = trades_df[trades_df["type"] == "entry"]
@@ -60,6 +76,13 @@ def plot_backtest_results(df: pd.DataFrame, trades_df: pd.DataFrame):
         label="Saída",
         zorder=5,
     )
+    ax1.plot(
+        trailing_stop_df.index,
+        trailing_stop_df["price"],
+        label="Trailing Stop",
+        color="orange",
+        linestyle="-.",
+    )
 
     ax1.set_title("Preço de Fecho e EMA9 com Sinais de Trade")
     ax1.set_ylabel("Preço")
@@ -68,18 +91,6 @@ def plot_backtest_results(df: pd.DataFrame, trades_df: pd.DataFrame):
 
     # Gráfico RSI
     ax2.plot(df.index, df["rsi"], label="RSI", color="purple")
-    ax2.axhline(
-        SCALPING_CONFIG["RSI_ENTRY_THRESHOLD"],
-        color="green",
-        linestyle="--",
-        label="RSI Entry Threshold",
-    )
-    ax2.axhline(
-        SCALPING_CONFIG["RSI_EXIT_THRESHOLD"],
-        color="red",
-        linestyle="--",
-        label="RSI Exit Threshold",
-    )
     ax2.set_title("RSI")
     ax2.set_ylabel("Valor")
     ax2.legend()
@@ -125,9 +136,12 @@ def run_backtest():
     df = pd.DataFrame(candles)
 
     trades = []
-    equity = 1000.0
+    initial_capital = 1000.0
+    equity = initial_capital
+    trade_percentage = 0.20  # 20% do capital por trade
     position = None
     plot_trades_events = []  # Para os teus plots
+    plot_trailing_stop_events = []  # Para os dados do trailing stop
 
     # Adicionar colunas de tempo para plotagem
     # Os timestamps parecem estar em microssegundos, dividir por 1000 para obter milissegundos
@@ -156,6 +170,12 @@ def run_backtest():
     df["volume_sma"] = (
         df["volume"].rolling(window=SCALPING_CONFIG["VOLUME_SMA_PERIOD"]).mean()
     )
+    df["upperband"], df["middleband"], df["lowerband"] = talib.BBANDS(
+        close_prices,
+        timeperiod=SCALPING_CONFIG["BBANDS_PERIOD"],
+        nbdevup=SCALPING_CONFIG["BBANDS_STDDEV"],
+        nbdevdn=SCALPING_CONFIG["BBANDS_STDDEV"],
+    )
 
     for i in range(
         SCALPING_CONFIG["ATR_PERIOD"] + SCALPING_CONFIG["EMA_PERIOD"], len(df)
@@ -173,6 +193,7 @@ def run_backtest():
                 SCALPING_CONFIG["VOLUME_SMA_PERIOD"],
                 SCALPING_CONFIG["MACD_SLOW"],
                 SCALPING_CONFIG["ATR_PERIOD"],
+                SCALPING_CONFIG["BBANDS_PERIOD"],
             )
             + 1
         ):
@@ -182,35 +203,73 @@ def run_backtest():
         current_time = df.index[i]
 
         # Passar a janela completa com indicadores para o agente
+        # O ATR JÁ FOI CALCULADO no test_agent_scalping_offline.py
+        # Apenas acedemos a ele aqui.
+        if "atr" not in window.columns:
+            print(
+                "Erro: ATR não encontrado no DataFrame da janela. Por favor, calcule o ATR antes de chamar o agente."
+            )
+            continue  # Pula esta iteração se o ATR não estiver disponível
+
         result = agent_scalping_offline(
             "SUIUSDT", window, position
         )  # Passa a posição atual
 
         if not position and result["entry"]:
+            # Calcular o tamanho da posição em dólares e a quantidade
+            trade_value = equity * trade_percentage
+            # Evitar divisões por zero ou trades minúsculos
+            if trade_value < 0.001 or result["entry_price"] == 0:
+                print(
+                    f"Trade value muito pequeno ou preço zero: {trade_value:.4f}. Pulando entrada."
+                )
+                continue
+
+            quantity = trade_value / result["entry_price"]
+
             # Usar a nova função para calcular TP/SL dinâmicos
             tp, sl = calculate_dynamic_tp_sl(
                 result["entry_price"],
-                result["entry_data"]["atr"],
-                result["entry_data"]["rsi"],
+                window.iloc[-1]["atr"],  # Usar o ATR da janela atual
+                window.iloc[-1]["rsi"],  # Usar o RSI da janela atual
+                SCALPING_CONFIG.get(
+                    "VOLATILITY_FACTOR", 1.0
+                ),  # Adicionar um fator de volatilidade do config
             )
             position = {
                 "entry_price": result["entry_price"],
                 "tp": tp,
                 "sl": sl,
+                "trailing_stop_price": sl,  # Inicializa o trailing stop com o SL inicial
                 "entry_time": current_time,
                 "scale_count": 0,  # Inicializa o contador de escalonamento
+                "quantity": quantity,  # Adicionar a quantidade
+                "trade_value": trade_value,  # Valor em dólares do trade
             }
             print(
-                f"ENTRADA em {current_time} | Preço: {result['entry_price']:.4f} | TP: {tp:.4f} | SL: {sl:.4f}"
+                f"ENTRADA em {current_time} | Preço: {result['entry_price']:.4f} | TP: {tp:.4f} | SL: {sl:.4f} | Qtd: {quantity:.4f}"
             )
             plot_trades_events.append(
                 {"time": current_time, "price": result["entry_price"], "type": "entry"}
             )
 
         elif position:
+            # Atualiza o preço do trailing stop
+            # Ele deve apenas subir, nunca descer
+            current_atr = window.iloc[-1]["atr"]
+            new_trailing_stop = current_price - (
+                current_atr * SCALPING_CONFIG["ATR_TRAILING_STOP_MULTIPLIER"]
+            )
+            position["trailing_stop_price"] = max(
+                position["trailing_stop_price"], new_trailing_stop
+            )
+            plot_trailing_stop_events.append(
+                {"time": current_time, "price": position["trailing_stop_price"]}
+            )
+
             # Lógica de saída: TP/SL fixos ou sinais do agente
             if current_price >= position["tp"]:
-                pnl = position["tp"] - position["entry_price"]
+                pnl = (position["tp"] - position["entry_price"]) * position["quantity"]
                 trades.append(pnl)
                 equity += pnl
                 print(
@@ -220,8 +279,12 @@ def run_backtest():
                     {"time": current_time, "price": current_price, "type": "exit"}
                 )
                 position = None
-            elif current_price <= position["sl"]:
-                pnl = position["sl"] - position["entry_price"]
+            elif (
+                current_price <= position["trailing_stop_price"]
+            ):  # Usa o trailing stop para a saída
+                pnl = (
+                    position["trailing_stop_price"] - position["entry_price"]
+                ) * position["quantity"]
                 trades.append(pnl)
                 equity += pnl
                 print(
@@ -235,7 +298,9 @@ def run_backtest():
                 # Verifica a saída do agente
                 agent_exit_signal, reason = result["exit"], result["reason"]
                 if agent_exit_signal:
-                    pnl = current_price - position["entry_price"]  # PnL ao preço atual
+                    pnl = (current_price - position["entry_price"]) * position[
+                        "quantity"
+                    ]  # PnL ao preço atual
                     trades.append(pnl)
                     equity += pnl
                     print(
@@ -259,7 +324,7 @@ def run_backtest():
                         print(
                             f"ESCALONAMENTO DE POSIÇÃO em {current_time} | Preço: {current_price:.4f} | Tamanho: {scale_size}"
                         )
-                        # Se fores recalcular TP/SL após escalar, fá-lo aqui:
+                        # Se for para recalcular TP/SL após escalar, faça-o aqui:
                         # position["tp"], position["sl"] = calculate_dynamic_tp_sl(...)
 
     trades_df_for_plot = pd.DataFrame(plot_trades_events)
@@ -268,16 +333,21 @@ def run_backtest():
     )  # Converte o timestamp das trades para datetime
     trades_df_for_plot.set_index("time", inplace=True)
 
-    equity_curve = generate_equity_curve(1000, trades)
+    trailing_stop_df = pd.DataFrame(plot_trailing_stop_events)
+    if not trailing_stop_df.empty:
+        trailing_stop_df["time"] = pd.to_datetime(trailing_stop_df["time"])
+        trailing_stop_df.set_index("time", inplace=True)
+
+    equity_curve = generate_equity_curve(initial_capital, trades)
 
     # Plotar os resultados no final
     plot_backtest_results(
-        df, trades_df_for_plot
-    )  # Passa o DF completo com indicadores e o DF de trades
+        df, trades_df_for_plot, trailing_stop_df
+    )  # Passa o DF completo com indicadores, o DF de trades e o DF do trailing stop
 
     return {
         "final_capital": equity,
-        "profit": equity - 1000,
+        "profit": equity - initial_capital,
         "win_rate": win_rate(trades),
         "profit_factor": profit_factor(trades),
         "max_drawdown": max_drawdown(equity_curve),

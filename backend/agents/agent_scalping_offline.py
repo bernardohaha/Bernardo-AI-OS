@@ -30,25 +30,6 @@ def agent_scalping_offline(symbol, df, position=None):
 
     if entry_signal:
         price = df.iloc[-1]["close"]
-        # O ATR JÁ FOI CALCULADO no test_agent_scalping_offline.py
-        # Apenas acedemos a ele aqui.
-        if "atr" not in df.columns:
-            print(
-                "Erro: ATR não encontrado no DataFrame. Por favor, calcule o ATR antes de chamar o agente."
-            )
-            return result  # Retorna um resultado sem entrada se o ATR não estiver disponível
-
-        atr = df.iloc[-1]["atr"]  # Acessa o ATR já calculado na última linha do DF
-        tp = calculate_take_profit(price, atr)
-        sl = calculate_stop_loss(price, atr)
-
-        result.update(
-            {
-                "entry": True,
-                "entry_price": price,
-                "tp": tp,
-                "sl": sl,
-            }
-        )
+        result.update({"entry": True, "entry_price": price})
 
     return result
